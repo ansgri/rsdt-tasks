@@ -1,1 +1,1 @@
-add_subdirectory(camshift)
+add_subdirectory(facedetect)
