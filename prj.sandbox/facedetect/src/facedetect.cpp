@@ -1,4 +1,6 @@
-// TODO: includes
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/objdetect/objdetect.hpp>
 
 // used by extractFace
 static int const STANDARD_FACE_WIDTH = 200;
@@ -27,5 +29,19 @@ int main(int argc, char const** argv)
 
     For face detection, see cv::CascadeClassifier::detectMultiScale: http://docs.opencv.org/modules/objdetect/doc/cascade_classification.html#cascadeclassifier-detectmultiscale
     */
+
+	cv::VideoCapture cap;
+	cap.open(0);
+	while (true)
+	{
+		cv::Mat frame;
+		if (!cap.read(frame))
+			break;
+
+		cv::imshow("frame", frame);
+
+		if ((cv::waitKey(20) & 0xFF) == 27)
+			break;
+	}
     return 0;
 }
