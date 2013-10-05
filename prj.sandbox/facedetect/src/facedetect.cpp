@@ -5,17 +5,18 @@
 // used by extractFace
 static int const STANDARD_FACE_WIDTH = 200;
 
+static cv::CascadeClassifier g_cascade;
+
 
 // run OpenCV face detector on img, store detections to result
 static void detectFaces(std::vector<cv::Rect> & result, cv::Mat const& img)
 {
-    cv::CascadeClassifier cascade;
-    if (!cascade.load("../data/haarcascade_frontalface_alt.xml"))
+    if (g_cascade.empty() && !g_cascade.load("../data/haarcascade_frontalface_alt.xml"))
         throw std::runtime_error("Unable to load cascade");
 
     cv::Mat grey;
     cv::cvtColor(img, grey, CV_RGB2GRAY);
-    cascade.detectMultiScale(grey, result);
+    g_cascade.detectMultiScale(grey, result);
 }
 
 // return a new image obtained by drawing supplied rectangles (faces) on img
@@ -89,7 +90,9 @@ int main(int argc, char const** argv)
             detectFaces(faces, frame);
             cv::imshow("facedetect", drawFaces(frame, faces));
             cv::Rect face = selectFace(faces);
-            cv::imshow("face", extractFace(frame, face));
+            cv::Mat extracted = extractFace(frame, face);
+            if (!extracted.empty())
+                cv::imshow("face", extracted);
             
             if ((cv::waitKey(20) & 0xFF) == 27)
                 break;
