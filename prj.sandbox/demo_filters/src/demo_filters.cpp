@@ -71,6 +71,15 @@ static void save_filtered_images(Mat const& src)
         cv::bilateralFilter(src, dst, BLUR_APERTURE, BLUR_BILATERAL_SIGMA, BLUR_BILATERAL_SIGMA);
         imwrite("bilateral.png", dst);
     }
+
+    {
+        Mat smooth;
+        cv::GaussianBlur(src, smooth, Size(BLUR_APERTURE, BLUR_APERTURE), 0);
+        
+        Mat dst;
+        cv::Canny(smooth, dst, 20, 80);
+        imwrite("canny.png", dst);
+    }
 }
 
 
