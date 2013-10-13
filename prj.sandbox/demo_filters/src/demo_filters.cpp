@@ -1,15 +1,55 @@
 #include <cstdio>
 #include <stdexcept>
+#include <algorithm>
 #include <opencv2/opencv.hpp>
 
 
-using cv::imwrite;
 using cv::Mat;
 using cv::Size;
 
 
 static int const BLUR_APERTURE = 15;
 static double const BLUR_BILATERAL_SIGMA = 100;
+static bool SAVE_SIDE_BY_SIDE = true;
+
+
+static cv::Mat hstack(cv::Mat const& m1, cv::Mat const& m2)
+{
+  if (m1.empty())
+    return m2.clone();
+  if (m2.empty())
+    return m1.clone();
+
+  cv::Mat r(std::max(m1.rows, m2.rows), m1.cols + m2.cols, m1.type());
+  r = cv::Scalar(0);
+  cv::Mat d1 = r(cv::Rect(cv::Point(0, 0), m1.size()));
+  cv::Mat d2 = r(cv::Rect(cv::Point(m1.cols, 0), m2.size()));
+  m1.copyTo(d1);
+  m2.copyTo(d2);
+  return r;
+}
+
+static cv::Mat vstack(cv::Mat const& m1, cv::Mat const& m2)
+{
+  if (m1.empty())
+    return m2.clone();
+  if (m2.empty())
+    return m1.clone();
+
+  cv::Mat r(m1.rows + m2.rows, std::max(m1.cols, m2.cols), m1.type());
+  r = cv::Scalar(0);
+  cv::Mat d1 = r(cv::Rect(cv::Point(0, 0), m1.size()));
+  cv::Mat d2 = r(cv::Rect(cv::Point(0, m1.rows), m2.size()));
+  m1.copyTo(d1);
+  m2.copyTo(d2);
+  return r;
+}
+
+
+static void save_result(std::string const& name, cv::Mat const& src, cv::Mat const& dst)
+{
+    cv::imwrite(name, SAVE_SIDE_BY_SIDE ? hstack(src, dst) : dst);
+}
 
 
 static void save_morph_images(Mat const& src, int strel_shape, std::string const& strel_name)
@@ -18,48 +58,48 @@ static void save_morph_images(Mat const& src, int strel_shape, std::string const
     Mat dst;
     
     cv::dilate(src, dst, strel);
-    imwrite("morph_dilate_" + strel_name + ".png", dst);
+    save_result("morph_dilate_" + strel_name + ".png", src, dst);
 
     cv::erode(src, dst, strel);
-    imwrite("morph_erode_" + strel_name + ".png", dst);
+    save_result("morph_erode_" + strel_name + ".png", src, dst);
 
     cv::morphologyEx(src, dst, cv::MORPH_OPEN, strel);
-    imwrite("morph_open_" + strel_name + ".png", dst);
+    save_result("morph_open_" + strel_name + ".png", src, dst);
 
     cv::morphologyEx(src, dst, cv::MORPH_CLOSE, strel);
-    imwrite("morph_close_" + strel_name + ".png", dst);
+    save_result("morph_close_" + strel_name + ".png", src, dst);
 
     cv::morphologyEx(src, dst, cv::MORPH_GRADIENT, strel);
-    imwrite("morph_grad_" + strel_name + ".png", dst);
+    save_result("morph_grad_" + strel_name + ".png", src, dst);
 
     cv::morphologyEx(src, dst, cv::MORPH_TOPHAT, strel);
-    imwrite("morph_tophat_" + strel_name + ".png", dst);
+    save_result("morph_tophat_" + strel_name + ".png", src, dst);
 
     cv::morphologyEx(src, dst, cv::MORPH_BLACKHAT, strel);
-    imwrite("morph_blackhat_" + strel_name + ".png", dst);
+    save_result("morph_blackhat_" + strel_name + ".png", src, dst);
 }
 
 static void save_filtered_images(Mat const& src)
 {
-    imwrite("src.png", src);
+    save_result("src.png", src, src);
 
     { // such blocks '{}' are to ensure deallocation of filtered images to preserve memory
       // and also to enable reuse of the name 'dst'
         Mat dst;
         cv::blur(src, dst, Size(BLUR_APERTURE, BLUR_APERTURE));
-        imwrite("box.png", dst);
+        save_result("box.png", src, dst);
     }
 
     {
         Mat dst;
         cv::medianBlur(src, dst, BLUR_APERTURE);
-        imwrite("median.png", dst);
+        save_result("median.png", src, dst);
     }
 
     {
         Mat dst;
         cv::GaussianBlur(src, dst, Size(BLUR_APERTURE, BLUR_APERTURE), 0);
-        imwrite("gauss.png", dst);
+        save_result("gauss.png", src, dst);
     }
 
     save_morph_images(src, cv::MORPH_RECT, "box");
@@ -69,7 +109,7 @@ static void save_filtered_images(Mat const& src)
     {
         Mat dst;
         cv::bilateralFilter(src, dst, BLUR_APERTURE, BLUR_BILATERAL_SIGMA, BLUR_BILATERAL_SIGMA);
-        imwrite("bilateral.png", dst);
+        save_result("bilateral.png", src, dst);
     }
 
     {
@@ -78,7 +118,7 @@ static void save_filtered_images(Mat const& src)
         
         Mat dst;
         cv::Canny(smooth, dst, 20, 80);
-        imwrite("canny.png", dst);
+        save_result("canny.png", src, dst);
     }
 }
 
