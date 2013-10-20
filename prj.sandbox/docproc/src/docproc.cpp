@@ -75,49 +75,6 @@ static cv::Mat morph_filter(cv::Mat const& src, int wx, int wy, int operation)
     return dst;   
 }
 
-static void find_crosses(cv::Mat const& src, Settings const& settings, DebugImageWriter & w)
-{
-    cv::Mat strel_black(15, 15, CV_8UC1, cv::Scalar(0));
-    strel_black.at<uint8_t>(7, 7) = 1;
-    strel_black.at<uint8_t>(1, 7) = 1;
-    strel_black.at<uint8_t>(3, 7) = 1;
-    strel_black.at<uint8_t>(5, 7) = 1;
-    strel_black.at<uint8_t>(9, 7) = 1;
-    strel_black.at<uint8_t>(11, 7) = 1;
-    strel_black.at<uint8_t>(13, 7) = 1;
-    strel_black.at<uint8_t>(7, 1) = 1;
-    strel_black.at<uint8_t>(7, 3) = 1;
-    strel_black.at<uint8_t>(7, 5) = 1;
-    strel_black.at<uint8_t>(7, 9) = 1;
-    strel_black.at<uint8_t>(7, 11) = 1;
-    strel_black.at<uint8_t>(7, 13) = 1;
-
-    cv::Mat strel_white(15, 15, CV_8UC1, cv::Scalar(0));
-    strel_white.at<uint8_t>(0, 2) = 1;
-    strel_white.at<uint8_t>(2, 0) = 1;
-    strel_white.at<uint8_t>(2, 2) = 1;
-    strel_white.at<uint8_t>(14 - 0, 2) = 1;
-    strel_white.at<uint8_t>(14 - 2, 0) = 1;
-    strel_white.at<uint8_t>(14 - 2, 2) = 1;
-    strel_white.at<uint8_t>(0, 14 - 2) = 1;
-    strel_white.at<uint8_t>(2, 14 - 0) = 1;
-    strel_white.at<uint8_t>(2, 14 - 2) = 1;
-    strel_white.at<uint8_t>(14 - 0, 14 - 2) = 1;
-    strel_white.at<uint8_t>(14 - 2, 14 - 0) = 1;
-    strel_white.at<uint8_t>(14 - 2, 14 - 2) = 1;
-
-    cv::Mat dst_black;
-    cv::morphologyEx(src, dst_black, cv::MORPH_DILATE, strel_black);
-    w.write("straightness_dst_black", dst_black);
-    cv::Mat dst_white;
-    cv::morphologyEx(src, dst_white, cv::MORPH_ERODE, strel_white);
-    w.write("straightness_dst_white", dst_white);
-
-    cv::Mat diff = (dst_white - dst_black) * 10.0;
-    w.write("straightness_diff", diff);
-}
-
-
 static cv::Mat rotate_around_center(cv::Mat const& src, double angle)
 {
     cv::Mat rotated;
@@ -236,7 +193,6 @@ static cv::Mat enhance_image(cv::Mat const& src, Settings const& settings, Debug
     cv::Mat rotated = rotate_around_center(enhanced, angle);
 
     cv::Mat downscaled = downscale(rotated, settings, w);
-    // find_crosses(downscaled, settings, w);
     return downscaled;
 }
 
