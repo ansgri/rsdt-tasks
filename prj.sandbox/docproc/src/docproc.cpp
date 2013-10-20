@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <algorithm>
 #include <stdexcept>
 #include <opencv2/opencv.hpp>
 #include <boost/noncopyable.hpp>
@@ -42,40 +43,140 @@ struct Settings
     int fg_smooth_wing;
     int fg_min_val;
     double downscale_factor;
+    double optangle_prescale_factor;
+    int optangle_open_wing;
+    double optangle_max_angle;
+    double optangle_angle_step;
 
     Settings()
     : bg_morph_wing(10),
       fg_morph_wing(50),
       fg_smooth_wing(50),
       fg_min_val(70),
-      downscale_factor(0.5)
+      downscale_factor(0.5),
+      optangle_prescale_factor(0.5),
+      optangle_open_wing(50),
+      optangle_max_angle(10),
+      optangle_angle_step(0.5)
     { }
 };
 
 
-static cv::Size size_for_wing(int w)
+static cv::Size size_for_wing(int wx, int wy)
 {
-    return cv::Size(w * 2 + 1, w * 2 + 1);
+    return cv::Size(wx * 2 + 1, wy * 2 + 1);
 }
 
-static cv::Mat morph_filter(cv::Mat const& src, int wing, int operation)
+static cv::Mat morph_filter(cv::Mat const& src, int wx, int wy, int operation)
 {
-    cv::Mat const strel = cv::getStructuringElement(cv::MORPH_RECT, size_for_wing(wing));
+    cv::Mat const strel = cv::getStructuringElement(cv::MORPH_RECT, size_for_wing(wx, wy));
     cv::Mat dst;
     cv::morphologyEx(src, dst, operation, strel);
     return dst;   
 }
 
+static void find_crosses(cv::Mat const& src, Settings const& settings, DebugImageWriter & w)
+{
+    cv::Mat strel_black(15, 15, CV_8UC1, cv::Scalar(0));
+    strel_black.at<uint8_t>(7, 7) = 1;
+    strel_black.at<uint8_t>(1, 7) = 1;
+    strel_black.at<uint8_t>(3, 7) = 1;
+    strel_black.at<uint8_t>(5, 7) = 1;
+    strel_black.at<uint8_t>(9, 7) = 1;
+    strel_black.at<uint8_t>(11, 7) = 1;
+    strel_black.at<uint8_t>(13, 7) = 1;
+    strel_black.at<uint8_t>(7, 1) = 1;
+    strel_black.at<uint8_t>(7, 3) = 1;
+    strel_black.at<uint8_t>(7, 5) = 1;
+    strel_black.at<uint8_t>(7, 9) = 1;
+    strel_black.at<uint8_t>(7, 11) = 1;
+    strel_black.at<uint8_t>(7, 13) = 1;
+
+    cv::Mat strel_white(15, 15, CV_8UC1, cv::Scalar(0));
+    strel_white.at<uint8_t>(0, 2) = 1;
+    strel_white.at<uint8_t>(2, 0) = 1;
+    strel_white.at<uint8_t>(2, 2) = 1;
+    strel_white.at<uint8_t>(14 - 0, 2) = 1;
+    strel_white.at<uint8_t>(14 - 2, 0) = 1;
+    strel_white.at<uint8_t>(14 - 2, 2) = 1;
+    strel_white.at<uint8_t>(0, 14 - 2) = 1;
+    strel_white.at<uint8_t>(2, 14 - 0) = 1;
+    strel_white.at<uint8_t>(2, 14 - 2) = 1;
+    strel_white.at<uint8_t>(14 - 0, 14 - 2) = 1;
+    strel_white.at<uint8_t>(14 - 2, 14 - 0) = 1;
+    strel_white.at<uint8_t>(14 - 2, 14 - 2) = 1;
+
+    cv::Mat dst_black;
+    cv::morphologyEx(src, dst_black, cv::MORPH_DILATE, strel_black);
+    w.write("straightness_dst_black", dst_black);
+    cv::Mat dst_white;
+    cv::morphologyEx(src, dst_white, cv::MORPH_ERODE, strel_white);
+    w.write("straightness_dst_white", dst_white);
+
+    cv::Mat diff = (dst_white - dst_black) * 10.0;
+    w.write("straightness_diff", diff);
+}
+
+
+static cv::Mat rotate_around_center(cv::Mat const& src, double angle)
+{
+    cv::Mat rotated;
+    cv::warpAffine(src,
+                   rotated, 
+                   cv::getRotationMatrix2D(cv::Point2f(src.cols / 2, src.rows / 2), angle, 1.0),
+                   src.size());
+    return rotated;
+}
+
+
+static double find_optimal_angle(cv::Mat const& src, Settings const& settings, DebugImageWriter & w)
+{
+    cv::Mat src_scaled;
+    cv::resize(src, 
+               src_scaled, 
+               cv::Size(), 
+               settings.optangle_prescale_factor, 
+               settings.optangle_prescale_factor, 
+               cv::INTER_AREA);
+    cv::Mat morph_grad = morph_filter(src_scaled, 1, 1, cv::MORPH_DILATE)
+                       - morph_filter(src_scaled, 1, 1, cv::MORPH_ERODE);
+    w.write("optangle_morph_grad", morph_grad);
+
+    double best_angle = 0.0;
+    double best_score = 0;
+    for (double angle = -settings.optangle_max_angle; 
+         angle <= settings.optangle_max_angle; 
+         angle += settings.optangle_angle_step)
+    {
+        cv::Mat morph_grad_rot = rotate_around_center(morph_grad, angle);
+        cv::Mat vbars = morph_filter(morph_grad_rot, 0, settings.optangle_open_wing, cv::MORPH_OPEN);
+        w.write("optangle_vbars", vbars);
+        cv::Mat hbars = morph_filter(morph_grad_rot, settings.optangle_open_wing, 0, cv::MORPH_OPEN);
+        w.write("optangle_hbars", hbars);
+        double const score = std::max(cv::mean(vbars)[0], cv::mean(hbars)[0]);
+        if (score > best_score)
+        {
+            best_score = score;
+            best_angle = angle;
+        }
+    }
+
+    return best_angle;
+}
+
+
 static cv::Mat remove_background(cv::Mat const& grey, Settings const& settings, DebugImageWriter & w)
 {
-    cv::Mat background = morph_filter(grey, settings.bg_morph_wing, cv::MORPH_CLOSE);
+    cv::Mat background = morph_filter(grey, settings.bg_morph_wing, settings.bg_morph_wing, 
+                                      cv::MORPH_CLOSE);
     w.write("background", background);
 
     cv::Mat without_bg = background - grey;
     w.write("without_bg", without_bg);
 
-    cv::Mat foreground = morph_filter(without_bg, settings.fg_morph_wing, cv::MORPH_DILATE);
-    cv::GaussianBlur(foreground, foreground, size_for_wing(settings.fg_smooth_wing), 0);
+    cv::Mat foreground = morph_filter(without_bg, settings.fg_morph_wing, settings.fg_morph_wing, 
+                                      cv::MORPH_DILATE);
+    cv::GaussianBlur(foreground, foreground, size_for_wing(settings.fg_smooth_wing, settings.fg_smooth_wing), 0);
     foreground = cv::max(foreground, settings.fg_min_val);
     w.write("foreground", foreground);
 
@@ -98,8 +199,8 @@ static cv::Mat downscale(cv::Mat const& src, Settings const& settings, DebugImag
         return src;
 
     int const morph_w = static_cast<int>(0.5 / factor);
-    cv::Mat src_dilated = morph_filter(src, morph_w, cv::MORPH_DILATE);
-    cv::Mat src_eroded = morph_filter(src, morph_w, cv::MORPH_ERODE);
+    cv::Mat src_dilated = morph_filter(src, morph_w, morph_w, cv::MORPH_DILATE);
+    cv::Mat src_eroded = morph_filter(src, morph_w, morph_w, cv::MORPH_ERODE);
 
     cv::Mat ds;
     cv::resize(src, ds, cv::Size(), factor, factor, cv::INTER_AREA);
@@ -121,6 +222,7 @@ static cv::Mat downscale(cv::Mat const& src, Settings const& settings, DebugImag
     return ds;
 }
 
+
 static cv::Mat enhance_image(cv::Mat const& src, Settings const& settings, DebugImageWriter & w)
 {
     cv::Mat grey;
@@ -129,7 +231,13 @@ static cv::Mat enhance_image(cv::Mat const& src, Settings const& settings, Debug
     cv::Mat enhanced = remove_background(grey, settings, w);
     w.write("enhanced", enhanced);
 
-    return downscale(enhanced, settings, w);
+    double const angle = find_optimal_angle(enhanced, settings, w);
+    printf("Best angle: %.2f\n", angle);
+    cv::Mat rotated = rotate_around_center(enhanced, angle);
+
+    cv::Mat downscaled = downscale(rotated, settings, w);
+    // find_crosses(downscaled, settings, w);
+    return downscaled;
 }
 
 
