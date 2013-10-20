@@ -2,91 +2,14 @@
 #include <algorithm>
 #include <stdexcept>
 #include <opencv2/opencv.hpp>
-#include <boost/noncopyable.hpp>
+#include "docproc.h"
+#include "utils.h"
 
 
 namespace rsdt { namespace docproc {
 
-class DebugImageWriter : private boost::noncopyable
-{
-public:
-    DebugImageWriter(std::string const& prefix, bool enabled)
-    : prefix_(prefix),
-      enabled_(enabled),
-      image_no_(0)
-    { }
 
-    bool enabled() const { return enabled_; }
-
-    void write(std::string const& label, cv::Mat const& img)
-    {
-        if (!enabled_)
-            return;
-
-        char buf[16] = {0};
-        sprintf(buf, "%02d", image_no_);
-        ++image_no_;
-        std::string const filename = prefix_ + buf + "_" + label + ".png";
-        cv::imwrite(filename, img);
-    }
-
-private:
-    std::string prefix_;
-    bool enabled_;
-    int  image_no_;
-};
-
-struct Settings
-{
-    int bg_morph_wing;
-    int fg_morph_wing;
-    int fg_smooth_wing;
-    int fg_min_val;
-    double downscale_factor;
-    double optangle_prescale_factor;
-    int optangle_open_wing;
-    double optangle_max_angle;
-    double optangle_angle_step;
-
-    Settings()
-    : bg_morph_wing(10),
-      fg_morph_wing(50),
-      fg_smooth_wing(50),
-      fg_min_val(70),
-      downscale_factor(0.5),
-      optangle_prescale_factor(0.5),
-      optangle_open_wing(50),
-      optangle_max_angle(10),
-      optangle_angle_step(0.5)
-    { }
-};
-
-
-static cv::Size size_for_wing(int wx, int wy)
-{
-    return cv::Size(wx * 2 + 1, wy * 2 + 1);
-}
-
-static cv::Mat morph_filter(cv::Mat const& src, int wx, int wy, int operation)
-{
-    cv::Mat const strel = cv::getStructuringElement(cv::MORPH_RECT, size_for_wing(wx, wy));
-    cv::Mat dst;
-    cv::morphologyEx(src, dst, operation, strel);
-    return dst;   
-}
-
-static cv::Mat rotate_around_center(cv::Mat const& src, double angle)
-{
-    cv::Mat rotated;
-    cv::warpAffine(src,
-                   rotated, 
-                   cv::getRotationMatrix2D(cv::Point2f(src.cols / 2, src.rows / 2), angle, 1.0),
-                   src.size());
-    return rotated;
-}
-
-
-static double find_optimal_angle(cv::Mat const& src, Settings const& settings, DebugImageWriter & w)
+double find_optimal_angle(cv::Mat const& src, Settings const& settings, DebugImageWriter & w)
 {
     cv::Mat src_scaled;
     cv::resize(src, 
@@ -107,9 +30,9 @@ static double find_optimal_angle(cv::Mat const& src, Settings const& settings, D
     {
         cv::Mat morph_grad_rot = rotate_around_center(morph_grad, angle);
         cv::Mat vbars = morph_filter(morph_grad_rot, 0, settings.optangle_open_wing, cv::MORPH_OPEN);
-        w.write("optangle_vbars", vbars);
+        // w.write("optangle_vbars", vbars);
         cv::Mat hbars = morph_filter(morph_grad_rot, settings.optangle_open_wing, 0, cv::MORPH_OPEN);
-        w.write("optangle_hbars", hbars);
+        // w.write("optangle_hbars", hbars);
         double const score = std::max(cv::mean(vbars)[0], cv::mean(hbars)[0]);
         if (score > best_score)
         {
@@ -122,7 +45,7 @@ static double find_optimal_angle(cv::Mat const& src, Settings const& settings, D
 }
 
 
-static cv::Mat remove_background(cv::Mat const& grey, Settings const& settings, DebugImageWriter & w)
+cv::Mat remove_background(cv::Mat const& grey, Settings const& settings, DebugImageWriter & w)
 {
     cv::Mat background = morph_filter(grey, settings.bg_morph_wing, settings.bg_morph_wing, 
                                       cv::MORPH_CLOSE);
@@ -149,7 +72,7 @@ static cv::Mat remove_background(cv::Mat const& grey, Settings const& settings, 
     return cv::Scalar(255) - dst;
 }
 
-static cv::Mat downscale(cv::Mat const& src, Settings const& settings, DebugImageWriter & w)
+cv::Mat downscale(cv::Mat const& src, Settings const& settings, DebugImageWriter & w)
 {
     double const factor = settings.downscale_factor;
     if (factor == 1.0)
@@ -180,57 +103,4 @@ static cv::Mat downscale(cv::Mat const& src, Settings const& settings, DebugImag
 }
 
 
-static cv::Mat enhance_image(cv::Mat const& src, Settings const& settings, DebugImageWriter & w)
-{
-    cv::Mat grey;
-    cv::cvtColor(src, grey, CV_RGB2GRAY);
-
-    cv::Mat enhanced = remove_background(grey, settings, w);
-    w.write("enhanced", enhanced);
-
-    double const angle = find_optimal_angle(enhanced, settings, w);
-    printf("Best angle: %.2f\n", angle);
-    cv::Mat rotated = rotate_around_center(enhanced, angle);
-
-    cv::Mat downscaled = downscale(rotated, settings, w);
-    return downscaled;
-}
-
-
-struct Args
-{
-    std::string src_image_path;
-    std::string dst_image_path;
-};
-
-
-static void run(Args const& args)
-{
-    DebugImageWriter w("docproc", true);
-    Settings settings; // default values are set in its ctor
-    cv::Mat dst = enhance_image(cv::imread(args.src_image_path, CV_LOAD_IMAGE_COLOR), settings, w);
-    cv::imwrite(args.dst_image_path, dst);
-}
-
 }}
-
-
-int main(int argc, char const** argv)
-{
-    try
-    {
-        if (argc != 3)
-            throw std::runtime_error("Bad command line; usage: ./docproc src-image dst-image");
-        rsdt::docproc::Args args;
-        args.src_image_path = argv[1];       
-        args.dst_image_path = argv[2];
-
-        rsdt::docproc::run(args);
-        return 0;
-    }
-    catch (std::exception const& e)
-    {
-        fprintf(stderr, "Exception: %s\n", e.what());
-        return 1;
-    }
-}
