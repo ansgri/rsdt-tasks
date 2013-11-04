@@ -29,8 +29,10 @@ double find_optimal_angle(cv::Mat const& src, Settings const& settings, DebugIma
          angle += settings.optangle_angle_step)
     {
         cv::Mat morph_grad_rot = rotate_around_center(morph_grad, angle);
+        w.write("optangle_morph_grad_rot", morph_grad);
+        
         cv::Mat vbars = morph_filter(morph_grad_rot, 0, settings.optangle_open_wing, cv::MORPH_OPEN);
-        // w.write("optangle_vbars", vbars);
+        w.write("optangle_vbars", vbars);
         cv::Mat hbars = morph_filter(morph_grad_rot, settings.optangle_open_wing, 0, cv::MORPH_OPEN);
         // w.write("optangle_hbars", hbars);
         double const score = std::max(cv::mean(vbars)[0], cv::mean(hbars)[0]);

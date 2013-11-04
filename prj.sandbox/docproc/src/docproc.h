@@ -29,7 +29,7 @@ struct Settings
       optangle_prescale_factor(0.5),
       optangle_open_wing(50),
       optangle_max_angle(10),
-      optangle_angle_step(0.5)
+      optangle_angle_step(1.0)
     { }
 };
 
