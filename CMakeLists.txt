@@ -31,12 +31,12 @@ include(cmake/compiler_definitions.cmake)
 include(cmake/options.cmake)
 
 # boost setup
-find_package(Boost REQUIRED)
-set(TTR_BOOST_VERSION "${Boost_MAJOR_VERSION}.${Boost_MINOR_VERSION}")
-#if(TTR_BOOST_VERSION VERSION_LESS "1.47")
-#  message(FATAL_ERROR "Bad boost version.")
-#endif()
-include_directories(${Boost_INCLUDE_DIRS})
+# find_package(Boost REQUIRED)
+# set(TTR_BOOST_VERSION "${Boost_MAJOR_VERSION}.${Boost_MINOR_VERSION}")
+# #if(TTR_BOOST_VERSION VERSION_LESS "1.47")
+# #  message(FATAL_ERROR "Bad boost version.")
+# #endif()
+# include_directories(${Boost_INCLUDE_DIRS})
 
 
 # global include directories
