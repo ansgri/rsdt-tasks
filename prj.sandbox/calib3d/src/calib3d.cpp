@@ -17,21 +17,22 @@ using cv::Point3f;
 
 int main()
 {
-  vector<string> fn;
-  
-  fn.push_back("right01");
-  fn.push_back("right02");
-  fn.push_back("right03");
-  fn.push_back("right04");
-  fn.push_back("right05");
-  fn.push_back("right06");
-  fn.push_back("right07");
-  fn.push_back("right08");
-  fn.push_back("right09");
-  fn.push_back("right11");
-  fn.push_back("right12");
-  fn.push_back("right13");
-  fn.push_back("right14");
+  vector<string> filenames;
+  {
+    filenames.push_back("right01");
+    filenames.push_back("right02");
+    filenames.push_back("right03");
+    filenames.push_back("right04");
+    filenames.push_back("right05");
+    filenames.push_back("right06");
+    filenames.push_back("right07");
+    filenames.push_back("right08");
+    filenames.push_back("right09");
+    filenames.push_back("right11");
+    filenames.push_back("right12");
+    filenames.push_back("right13");
+    filenames.push_back("right14");
+  }
 
   cv::Size const board_size(9, 6);
   double const square_size = 1.0;
@@ -41,17 +42,18 @@ int main()
   vector<vector<Point2f> > pts_by_img;
 
   cv::Size src_size;
-  for (size_t i = 0; i < fn.size(); ++i)
+  for (size_t i = 0; i < filenames.size(); ++i)
   {
-    printf("Processing %s\n", fn[i].c_str());
+    string const& fn = filenames[i];
+    printf("Processing %s\n", fn.c_str());
 
-    Mat src = cv::imread(fn[i] + ".jpg", CV_LOAD_IMAGE_COLOR);
+    Mat src = cv::imread(fn + ".jpg", CV_LOAD_IMAGE_COLOR);
     src_size = src.size();
     vector<Point2f> pattern_pts;
     bool const found = cv::findChessboardCorners(src, board_size, pattern_pts);
     if (!found)
     {
-      printf("Corners not found for %s\n", fn[i].c_str());
+      printf("Corners not found for %s\n", fn.c_str());
       continue;
     }
       
@@ -63,7 +65,7 @@ int main()
     Mat dst;
     cv::cvtColor(src_gray, dst, CV_GRAY2BGR);
     cv::drawChessboardCorners(dst, board_size, Mat(pattern_pts), found);
-    cv::imwrite("_" + fn[i] + ".corners.jpg", dst);
+    cv::imwrite("_" + fn + ".corners.jpg", dst);
 
     pts_by_img.push_back(pattern_pts);
   }
@@ -74,9 +76,6 @@ int main()
     return 1;
   }
 
-  camera_matrix = Mat::eye(3, 3, CV_64F);
-  dist_coeffs = Mat::zeros(8, 1, CV_64F);
-  
 
   vector<Point3f> corners3d;
   for (int y = 0; y < board_size.height; ++y)
@@ -84,8 +83,8 @@ int main()
           corners3d.push_back(Point3f(x * square_size, y * square_size, 0));
   vector<vector<Point3f> > corners3d_by_img(pts_by_img.size(), corners3d);
 
-
-
+  camera_matrix = Mat::eye(3, 3, CV_64F);
+  dist_coeffs = Mat::zeros(8, 1, CV_64F);
   vector<Mat> rvecs;
   vector<Mat> tvecs;
   double rms = cv::calibrateCamera(corners3d_by_img, pts_by_img, src_size, camera_matrix,
@@ -99,14 +98,15 @@ int main()
       src_size, CV_16SC2, map1, map2);
 
 
-  for (size_t i = 0; i < fn.size(); ++i)
+  for (size_t i = 0; i < filenames.size(); ++i)
   {
-    printf("Correcting %s\n", fn[i].c_str());
+    string const& fn = filenames[i];
+    printf("Correcting %s\n", fn.c_str());
 
-    Mat src = cv::imread(fn[i] + ".jpg", CV_LOAD_IMAGE_COLOR);
+    Mat src = cv::imread(fn + ".jpg", CV_LOAD_IMAGE_COLOR);
     Mat undist;
     cv::remap(src, undist, map1, map2, cv::INTER_LINEAR);
-    cv::imwrite("_" + fn[i] + ".undist.jpg", undist);
+    cv::imwrite("_" + fn + ".undist.jpg", undist);
   }
 
   return 0;
